@@ -1,8 +1,6 @@
 import telebot
 import sqlite3
 import datetime
-import time
-import threading
 import requests
 import random
 from telebot import types
@@ -13,6 +11,7 @@ TOKEN = '1287390579:AAG3EUanWJGFNaIp4E_6x1YCOM-QbuM3u64'
 bot = telebot.TeleBot(TOKEN)
 RusArr= {1:2, 2:3, 3:4 , 4:5 , 5:6 ,6:7, 7:1}
 today = datetime.datetime.today().weekday()
+
 
 def user_chat_id_try(message):
     conn = sqlite3.connect('schedule.db')
@@ -31,31 +30,6 @@ def user_chat_id_try(message):
     conn.close()
     return user_chat_id
 
-
-#########################################################################################################################
-#########################################################################################################################
-# Ф-я авто-уведомлений
-
-def timeCheck ():
-    conn = sqlite3.connect('schedule.db')
-    cursor = conn.cursor()
-    while True:
-        currtime = datetime.time( datetime.datetime.now().time().hour,  datetime.datetime.now().time().minute)
-        user_chat_ids =  cursor.execute('SELECT user_chat_id FROM `notification` WHERE time_n=(?)',(str(currtime),))
-        user_chat_ids = user_chat_ids.fetchall()
-        for user_chat_id in user_chat_ids :
-                if user_chat_id != None and user_chat_id != '':
-                    txt = showDay(RusArr[today+1], user_chat_id)
-                    bot.send_message(user_chat_id, '<b>Авто-нагадування</b>\n\n' +txt, parse_mode="HTML")
-        time.sleep(60)
-    conn.close()
-tChThr = threading.Thread(target=timeCheck, name='tchThr')
-tChThr.start()
-#
-# #
-# # ##########################################################################################################################################
-# # ##########################################################################################################################################
-# # # Ф-я для вывода пар на определенный день
 
 
 def showDay(day, user_chat_id) :
@@ -80,17 +54,14 @@ def showDay(day, user_chat_id) :
     conn.close()
     return text_for_send
 
-# # ##########################################################################################################################################
-# # ##########################################################################################################################################
-#
-# # # ф-я позволяет принимает желаемый день и отсылает результат (в командной форме)
+
 @bot.message_handler(commands=['monday','tuesday','wednesday','thursday','friday','saturday'])
 def handle_monday(message):
     user_chat_id = user_chat_id_try(message)
     dictOfDays = {'monday':1,'tuesday':2 ,'wednesday':3,'thursday':4,'friday':5 ,'saturday':6 }
     bot.send_message(message.chat.id, showDay(dictOfDays[message.text[1:]], user_chat_id), parse_mode="HTML")
 
-# # # ф-я позволяет принимает команду отсылает рассписание на неделю (в командной форме)
+
 @bot.message_handler(commands=['all'])
 def handle_all(message):
     user_chat_id = user_chat_id_try(message)
@@ -101,71 +72,52 @@ def handle_all(message):
     user_group_lessons = user_group_lessons.json()
     if( user_group_lessons['statusCode'] == 200):
         for week in range(1,3):
-            text = '<b>Розклад групи - {0} -</b>\n\n'.format(user_group_lessons['data']['group']['group_full_name'], )
-            text +='<b>Неділя - {0}</b>'.format(week) +'\n'
+            text = '<b>Расписание для группы {0}:</b>\n'.format(user_group_lessons['data']['group']['group_full_name'], )
+            text +='<b>Неделя {0}</b>.'.format(week) +'\n'
             lessons_days = user_group_lessons['data']['weeks'][str(week)]['days']
             for day in range(1,7):
                 lessons_day = lessons_days[str(day)]
                 lessons = lessons_day['lessons']
                 if len(lessons)== 0 :
                     continue
-                text += lessons_day['day_name'] + '\n'
+                text += '\n<b>' + lessons_day['day_name'] + ':</b>\n'
                 for lesson in lessons:
-                    text += "{0}) {1}  \n".format(lesson["lesson_number"],lesson["lesson_name"])
-                    text += "- <code>{0} {1} </code>".format(lesson["lesson_type"],lesson["lesson_room"])
+                    text += "<b>{0}) {1}</b>\n".format(lesson["lesson_number"],lesson["lesson_name"])
+                    text += "{0} {1}".format(lesson["lesson_type"],lesson["lesson_room"])
                     if len(lesson["teachers"])!=0:
                        teacher = lesson["teachers"][0]
-                       text += "<code>{0}</code> -\n".format(teacher["teacher_name"])
+                       text += " {0}\n".format(teacher["teacher_name"])
 
             text += '\n'
             bot.send_message(user_chat_id, text, parse_mode="HTML")
-            text = ''
     else:
-        text = 'Выберите группу с помощью команды: /set. \nНапример: "/set IV-73" или "/set ІВ-73".'
+        text = 'Визначте свою групу за домомогою команди -<code> /set </code> \nФормат  -<code> /set БС-62 </code>'
         bot.send_message(user_chat_id, text, parse_mode="HTML")
     conn.close()
 
-# # # ф-я позволяет принимает команду отсылает рассписание сегодня  (в командной форме)
 @bot.message_handler(commands=['today'])
 def handle_all(message):
     user_chat_id  = user_chat_id_try(message)
     text =showDay(RusArr[today] , user_chat_id )
     bot.send_message(user_chat_id ,text, parse_mode= "HTML")
-#
-# # # ф-я позволяет принимает команду отсылает рассписание завтра (в командной форме)
+
+
 @bot.message_handler(commands=['tomorrow'])
 def handle_all(message):
     user_chat_id = user_chat_id_try(message)
     text =showDay(RusArr[today+1] ,  user_chat_id)
     bot.send_message( user_chat_id,text, parse_mode= "HTML")
-#
-# # # ф-я позволяет установить время автоуведомлений   (в командной форме)
-@bot.message_handler(commands=['settime'])
-def handle_all(message):
-    txt= message.text[9:14]
-    try:
-        time = datetime.time(int(txt[0:2]), int(txt[3:5]))
-    except ValueError:
-        bot.send_message(message.chat.id, '<b>Некоректні дані.</b>\n\nВведіть час у форматі - <code>/settime 21:30</code> . ', parse_mode="HTML")
-        return 0
-    conn = sqlite3.connect('schedule.db')
-    cursor = conn.cursor()
-    user_chat_id = user_chat_id_try(message)
-    cursor.execute("UPDATE notification SET time_n ='{0}' WHERE user_chat_id='{1}'".format(time, user_chat_id))
-    conn.commit()
-    txt = 'Розклад буде відправлятися щоденно о - <code>{0}:{1}</code>'.format(time.hour,time.minute)
-    conn.close()
-    bot.send_message(message.chat.id, txt, parse_mode="HTML")
 
-# # # ф-я позволяет увидеть все доступные команды  (в командной форме)
+
+
 @bot.message_handler(commands=['help'])
 def handle_help(message):
-    bot.send_message(message.chat.id, '/monday - расписание в понедельник. \n/tuesday - расписанние во вторник. \n/wednesday - расписание во в среду. \n/thursday  - расписание в четверг.\n/friday - расписание в пятницу.\n/saturday - расписание в субботу.\n/map - выдать карту КПИ.\n/help - показать все команды бота.\n/weather - перейти по ссылке и посмотреть погоду в Киеве.\n/coin - подбросить монету и решить спор.\n/creator - обратная связь.\n\n🤖 Этот бот будет дальше поддерживаться и улучшаться.')
-
-
-
-
-
+    bot.send_message(message.chat.id, '/all - показать полное расписание для группы. \n/monday - расписание в понедельник. \n/tuesday - расписанние во вторник. '
+                                      '\n/wednesday - расписание во в среду. \n/thursday  - расписание в четверг.'
+                                      '\n/friday - расписание в пятницу.\n/saturday - расписание в субботу.'
+                                      '\n/map - выдать карту КПИ.\n/help - показать все команды бота.'
+                                      '\n/weather - перейти по ссылке и посмотреть погоду в Киеве.\n/coin - подбросить монету и решить спорную ситуацию.'
+                                      '\n/creator - обратная связь.\n\n🤖 Этот бот будет поддерживаться и улучшаться.')
 
 
 
@@ -173,8 +125,6 @@ def handle_help(message):
 def welcome(message):
     photo = open('static/map.jpg', 'rb')
     bot.send_photo(message.chat.id, photo)
-
-
 
 
 @bot.message_handler(commands=['weather'])
@@ -189,8 +139,6 @@ def creator(message):
     bot.send_message(message.chat.id,
                      "Вот линк на разработчика: @NVV007".format(
                          message.from_user, bot.get_me()))
-
-
 
 
 
@@ -210,12 +158,6 @@ def callback_inline(call):
 
 
 
-
-
-
-
-
-# # ф-я позволяет принимает выбрать группу  (в командной форме)
 @bot.message_handler(commands=['set'])
 def handle_sunday(message):
     user_chat_id = user_chat_id_try(message)
@@ -229,7 +171,8 @@ def handle_sunday(message):
             conn = sqlite3.connect('schedule.db')
             cursor = conn.cursor()
             cursor.execute("UPDATE users SET user_group ='{0}' WHERE user_chat_id='{1}'".format(group_inf['data']['group_id'],user_chat_id))
-            bot.send_message(user_chat_id,'Выбранная группа: <b>{0}</b>\nДля смены группы примени команду: /set.\nВ формате: "/set ІВ-73" или "/set IV-73".'.format(group_inf['data']['group_full_name'].upper(), ),parse_mode="HTML")
+            bot.send_message(user_chat_id,'Выбранная группа: <b>{0}</b>\nДля смены группы примени команду: /set.'
+                                          '\nВ формате: "/set ІВ-73" или "/set IV-73".'.format(group_inf['data']['group_full_name'].upper(), ),parse_mode="HTML")
             conn.commit()
             conn.close()
         else:
@@ -237,8 +180,6 @@ def handle_sunday(message):
 
 
 
-##########################################################################################################################################
-##  Ф-Я ДЛЯ СТАРТА , ПЕРЕДАЕТ КЛАВИАТУРУ И ДАЕТ ПОНЯТЬ ЕСТЬ ЛИ ТЫ В РЕГИСТРЕ  ######################################################################################################################################
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -263,8 +204,8 @@ def handle_start(message):
             group_name = 'Твоя выбранная группа: <b>{0}</b>.'.format(group_name.upper(),)
         else:
             group_name= 'Группа не выбрана.'
-    txt = 'Приветствую, <b>{0}</b>! Зови меня Хелпером! \n{1}\nДля смены группы примени команду /set.\nНапример: "/set IV-73" или "/set ІВ-73".'.format(message.chat.username, group_name )
-    #txt = txt +'\n\nФункція автоповідомлення -<code> /settime</code>\nФормат  -<code> /settime 21:30</code>'
+    txt = 'Приветствую, <b>'+'{0.first_name}'.format(message.from_user,bot.get_me())+'</b>!  Зови меня Хелпером! \n{1}\nДля смены группы примени команду /set.' \
+          '\nНапример: "/set IV-73" или "/set ІВ-73".'.format(message.chat.username, group_name )
     sti = open('static/welcome.webp', 'rb')
     bot.send_sticker(message.chat.id, sti)
     bot.send_message(user_chat_id,txt,reply_markup=user_markup ,parse_mode= "HTML")
@@ -283,11 +224,6 @@ def handle_start(message):
 
 
 
-
-##########################################################################################################################################
-##########################################################################################################################################
-#
-# # # ф-я позволяет принимает команду отсылает рассписание на выбраный день , отправляет ошибку если команда не определена (в текстовой форме)
 @bot.message_handler(content_types=['text'])
 def handle_text(message):
     user_chat_id = user_chat_id_try(message)
@@ -305,13 +241,10 @@ def handle_text(message):
         markup.add(item1, item2, item3)
         bot.send_message(message.chat.id, 'Вот, пользуйся из оффициальных источников:', reply_markup=markup)
     else:
-        bot.send_message(user_chat_id, '<b>"{0}"</b>? Я даже и не знаю что ответить, по крайней мере меня этому ещё не учили 😢'.format(message.text, ),parse_mode="HTML")
+        bot.send_message(user_chat_id,
+                         '<b>"{0}"</b>? Я даже и не знаю что ответить, по крайней мере меня этому ещё не учили 😢'.format(message.text, ),parse_mode="HTML")
 
 
 
-# ##########################################################################################################################################
-# ##########################################################################################################################################
 
-# s = input('-')
-# bot.send_message(399127688,'<i>Амин</i> : <code>{0}</code>'.format(s,), parse_mode= "HTML")
 bot.polling(none_stop=True)
